@@ -1,5 +1,7 @@
 # pyspark --packages com.datastax.spark:spark-cassandra-connector_2.12:3.1.0
 
+import findspark
+findspark.init()
 import os
 import time
 import datetime
@@ -14,12 +16,14 @@ from pyspark.sql.functions import lit
 from pyspark import SparkConf, SparkContext
 from uuid import * 
 from uuid import UUID
+import time_uuid 
 from pyspark.sql import Row
 from pyspark.sql.functions import udf
 from pyspark.sql.functions import monotonically_increasing_id
 from pyspark.sql.window import Window as W
 from pyspark.sql import functions as F
-
+    
+spark = SparkSession.builder.config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0').getOrCreate()
 
 def calculating_clicks(df):
     clicks_data = df.filter(df.custom_track == 'click')
@@ -160,15 +164,40 @@ def main_task(mysql_time):
     password = '1'
     url = 'jdbc:mysql://' + host + ':' + port + '/' + db_name
     driver = "com.mysql.cj.jdbc.Driver"
+    print('------ Data Warehouse --------')
+    print('The host is:' ,host)
+    print('The port using is: ',port)
+    print('The db using is: ',db_name)
+    print('------------------------------')
+    print('Retrieving data from Cassandra')
+    print('------------------------------')
     df = spark.read.format("org.apache.spark.sql.cassandra").options(table="tracking",keyspace="study_data_engineering").load().filter(col('ts') > mysql_time)
+    print('------------------------------')
+    print('Selecting data from Cassandra')
+    print('------------------------------')
     df = df.select('ts','job_id','custom_track','bid','campaign_id','group_id','publisher_id')
     df = df.filter(df.job_id.isNotNull())
-    df.show()
+    df.printSchema()
+    print('------------------------------')
+    print('Processing Cassandra Output')
+    print('------------------------------')
     cassandra_output = process_cassandra_data(df)
+    print('------------------------------')
+    print('Merge Company Data')
+    print('-----------------------------')
     company = retrieve_company_data(url,driver,user,password)
     join_output = cassandra_output.join(company,'job_id','left').drop(company.group_id).drop(company.campaign_id)
+    print('-----------------------------')
+    print('Add column Last Updated Time (CDC) near real time')
+    print('-----------------------------')
     final_output = last_updated_time(df, join_output)
+    print('-----------------------------')
+    print('Data Final Output')
+    print('-----------------------------')
     final_output.show()
+    print('-----------------------------')
+    print('Import Output to MySQL')
+    print('-----------------------------')
     import_to_mysql(final_output)
     return print('Task Finished')
     
@@ -187,8 +216,7 @@ def get_mysql_latest_time(url,driver,user,password):
         # mysql_latest = mysql_time.strftime('%Y-%m-%d %H:%M:%S')
         mysql_latest = mysql_time
     return mysql_latest 
-    
-spark = SparkSession.builder.config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0').getOrCreate()
+
 host = 'localhost'
 port = '3306'
 db_name = 'Data_Warehouse'
@@ -198,20 +226,17 @@ url = 'jdbc:mysql://' + host + ':' + port + '/' + db_name
 driver = "com.mysql.cj.jdbc.Driver"
 
 while True :
+    start_time = datetime.datetime.now()
     cassandra_time = get_latest_time_cassandra()
+    print('--------------------------------------------------')
+    print('Cassandra latest time is {}'.format(cassandra_time))
     mysql_time = get_mysql_latest_time(url,driver,user,password)
-    print(cassandra_time)
-    print(mysql_time)
+    print('MySQL latest time is {}'.format(mysql_time))
     if cassandra_time > mysql_time : 
         main_task(mysql_time)
     else :
         print("No new data found")
+    end_time = datetime.datetime.now()
+    execution_time = (end_time - start_time).total_seconds()
+    print('Job takes {} seconds to execute'.format(execution_time))
     time.sleep(10)
-
-# main_task()
-# print(get_latest_time_cassandra())
-# print(get_mysql_latest_time(url,driver,user,password))
-# print(get_latest_time_cassandra() > get_mysql_latest_time(url,driver,user,password)) 
-
-
- 
