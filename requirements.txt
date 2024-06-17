@@ -1,0 +1,6 @@
+cassandra-driver
+SQLAlchemy>=1.4
+python-dotenv
+cassandra-driver
+time_uuid
+uuid

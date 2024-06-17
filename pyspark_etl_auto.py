@@ -1,7 +1,10 @@
 # pyspark --packages com.datastax.spark:spark-cassandra-connector_2.12:3.1.0
 
-import findspark
-findspark.init()
+# Start docker thì comment đoạn này lại và cái spark Session
+# Khi chạy trên docker nhớ thay đổi localhost thành địa chỉ IP của container 
+
+# import findspark
+# findspark.init()
 import os
 import time
 import datetime
@@ -23,7 +26,12 @@ from pyspark.sql.functions import monotonically_increasing_id
 from pyspark.sql.window import Window as W
 from pyspark.sql import functions as F
     
-spark = SparkSession.builder.config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0').getOrCreate()
+spark = SparkSession.builder.config('spark.jars.packages', 'com.datastax.spark:spark-cassandra-connector_2.12:3.1.0') \
+    .config("spark.cassandra.connection.host", "172.17.0.2") \
+    .config("spark.cassandra.connection.port", "9042") \
+    .config("spark.cassandra.auth.username", "cassandra") \
+    .config("spark.cassandra.auth.password", "cassandra") \
+    .getOrCreate()
 
 def calculating_clicks(df):
     clicks_data = df.filter(df.custom_track == 'click')
@@ -143,7 +151,7 @@ def import_to_mysql(output):
     final_output = final_output.withColumn('sources',lit('Cassandra'))
     final_output.write.format("jdbc") \
     .option("driver","com.mysql.cj.jdbc.Driver") \
-    .option("url", "jdbc:mysql://localhost:3306/Data_Warehouse") \
+    .option("url", "jdbc:mysql://172.17.0.3:3306/Data_Warehouse") \
     .option("dbtable", "events_etl") \
     .mode("append") \
     .option("user", "root") \
@@ -157,7 +165,7 @@ def last_updated_time(df, final_output):
     return final_output
 
 def main_task(mysql_time):
-    host = 'localhost'
+    host = '172.17.0.3'
     port = '3306'
     db_name = 'Data_Warehouse'
     user = 'root'
@@ -217,7 +225,7 @@ def get_mysql_latest_time(url,driver,user,password):
         mysql_latest = mysql_time
     return mysql_latest 
 
-host = 'localhost'
+host = '172.17.0.3'
 port = '3306'
 db_name = 'Data_Warehouse'
 user = 'root'
